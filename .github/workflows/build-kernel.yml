@@ -37,51 +37,41 @@ jobs:
     - name: Install Python 2.7 (kernel 3.4 requires Python 2)
       run: |
         set -euo pipefail
-        echo "=== Installing Python 2.7 ==="
-        sudo apt-get update
-        sudo apt-get install -y python2.7 python2.7-dev
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq python2.7 python2.7-dev
         mkdir -p "$HOME/bin"
         ln -sf /usr/bin/python2.7 "$HOME/bin/python"
         echo "$HOME/bin" >> "$GITHUB_PATH"
         command -v python
         python --version
         python2.7 --version
-        echo "=== Python 2.7 installed ==="
 
-    - name: Install base dependencies (no toolchain)
+    - name: Install base dependencies
       run: |
         set -euo pipefail
-        echo "=== Installing base dependencies ==="
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends \
           git python3 python3-dev \
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
-        echo "=== Base dependencies installed ==="
 
-    - name: Setup Android NDK (pre-installed on runner)
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: r25c
-        api-level: 28
-
-    - name: Verify NDK ARM toolchain
+    - name: Install ARM toolchain (gcc-arm-linux-gnueabi, ~100MB)
       run: |
         set -euo pipefail
-        echo "=== Verifying NDK toolchain ==="
-        # NDK r25c provides arm-linux-androideabi-* toolchain
-        # Use it with bare-metal prefix by creating symlinks
-        export ANDROID_NDK_HOME="${ANDROID_NDK_ROOT}"
-        echo "NDK root: ${ANDROID_NDK_ROOT}"
-        find "${ANDROID_NDK_ROOT}" -name "*arm*gcc*" -type f 2>/dev/null | head -10
-        
-        # Use the NDK's arm-linux-androideabi toolchain
-        export CROSS_COMPILE=arm-linux-androideabi-
+        export DEBIAN_FRONTEND=noninteractive
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends gcc-arm-linux-gnueabi
+
+    - name: Verify ARM toolchain
+      run: |
+        set -euo pipefail
+        export CROSS_COMPILE=arm-linux-gnueabi-
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
-        echo "=== NDK toolchain verified ==="
 
     - name: Apply patch
       run: |
@@ -93,13 +83,13 @@ jobs:
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
+        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
 
     - name: Build kernel
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- -j$(nproc) 2>&1 | tee build.log
+        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) 2>&1 | tee build.log
 
     - name: Verify artifacts
       run: |

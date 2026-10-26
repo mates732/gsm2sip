@@ -48,7 +48,7 @@ jobs:
         python2.7 --version
         echo "=== Python 2.7 installed ==="
 
-    - name: Install dependencies
+    - name: Install base dependencies (no toolchain)
       run: |
         set -euo pipefail
         echo "=== Installing base dependencies ==="
@@ -59,23 +59,29 @@ jobs:
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
         echo "=== Base dependencies installed ==="
 
-    - name: Install ARM toolchain (gcc-arm-linux-gnueabi)
-      run: |
-        set -euo pipefail
-        echo "=== Installing gcc-arm-linux-gnueabi ==="
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabi
-        echo "=== gcc-arm-linux-gnueabi installed ==="
+    - name: Setup Android NDK (pre-installed on runner)
+      uses: android-actions/setup-android@v3
+      with:
+        ndk-version: r25c
+        api-level: 28
 
-    - name: Verify Linux-targeted ARM toolchain
+    - name: Verify NDK ARM toolchain
       run: |
         set -euo pipefail
-        export CROSS_COMPILE=arm-linux-gnueabi-
+        echo "=== Verifying NDK toolchain ==="
+        # NDK r25c provides arm-linux-androideabi-* toolchain
+        # Use it with bare-metal prefix by creating symlinks
+        export ANDROID_NDK_HOME="${ANDROID_NDK_ROOT}"
+        echo "NDK root: ${ANDROID_NDK_ROOT}"
+        find "${ANDROID_NDK_ROOT}" -name "*arm*gcc*" -type f 2>/dev/null | head -10
+        
+        # Use the NDK's arm-linux-androideabi toolchain
+        export CROSS_COMPILE=arm-linux-androideabi-
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
-        echo "=== Toolchain verified ==="
+        echo "=== NDK toolchain verified ==="
 
     - name: Apply patch
       run: |
@@ -87,13 +93,13 @@ jobs:
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
+        make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
 
     - name: Build kernel
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) 2>&1 | tee build.log
+        make ARCH=arm CROSS_COMPILE=arm-linux-androideabi- -j$(nproc) 2>&1 | tee build.log
 
     - name: Verify artifacts
       run: |

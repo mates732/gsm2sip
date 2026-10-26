@@ -63,7 +63,7 @@ jobs:
         ndk-version: r26d
         api-level: 28
 
-    - name: Diagnose NDK toolchain
+    - name: Diagnose NDK toolchain and select compiler
       run: |
         set -euo pipefail
         echo "=== Diagnosing NDK toolchain ==="
@@ -80,8 +80,16 @@ jobs:
         echo "Toolchain bin: $TOOLCHAIN_BIN"
         ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
         
-        # Check for arm-none-eabi-gcc (bare-metal)
-        if [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
+        # Priority order: clang (better for older kernels), then gcc variants
+        if [ -f "$TOOLCHAIN_BIN/clang" ]; then
+          echo "Using NDK clang with bare-metal target"
+          export CC=clang
+          export CROSS_COMPILE=arm-none-eabi-
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          # Verify clang works for bare-metal
+          clang --version
+          clang --target=arm-none-eabi -c -x c /dev/null -o /dev/null 2>&1 && echo "clang bare-metal target OK" || echo "clang bare-metal target FAILED"
+        elif [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
           export CROSS_COMPILE=arm-none-eabi-
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         elif [ -f "$TOOLCHAIN_BIN/arm-eabi-gcc" ]; then
@@ -99,13 +107,23 @@ jobs:
           exit 1
         fi
         
-        export PATH="$TOOLCHAIN_PATH:$PATH"
+        if [ -n "$TOOLCHAIN_PATH" ]; then
+          export PATH="$TOOLCHAIN_PATH:$PATH"
+        elif [ "$CC" = "clang" ]; then
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+        fi
+        
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
         echo "CROSS_COMPILE=${CROSS_COMPILE}" >> $GITHUB_ENV
-        echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
+        if [ -n "$CC" ]; then
+          echo "CC=${CC}" >> $GITHUB_ENV
+        fi
+        if [ -n "$TOOLCHAIN_PATH" ]; then
+          echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
+        fi
 
     - name: Apply patch
       run: |

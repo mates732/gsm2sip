@@ -71,7 +71,6 @@ jobs:
         NDK_ROOT=""
         for p in "${NDK_PATHS[@]}"; do
           if [ -d "$p" ]; then
-            # Find the latest version directory
             LATEST=$(ls -1 "$p" 2>/dev/null | sort -V | tail -1)
             if [ -n "$LATEST" ] && [ -d "$p/$LATEST" ]; then
               NDK_ROOT="$p/$LATEST"
@@ -86,11 +85,9 @@ jobs:
         fi
         echo "Found NDK at: $NDK_ROOT"
         
-        # Look for bare-metal toolchain in NDK (clang or gcc)
-        # NDK r25c+ has bare-metal toolchain in toolchains/llvm/prebuilt/linux-x86_64/bin/
+        # Look for toolchain in NDK
         TOOLCHAIN_BIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         if [ ! -d "$TOOLCHAIN_BIN" ]; then
-          # Fallback: check for gcc toolchain
           TOOLCHAIN_BIN=$(find "$NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -1 | xargs dirname)
         fi
         if [ ! -d "$TOOLCHAIN_BIN" ]; then
@@ -100,8 +97,13 @@ jobs:
         fi
         echo "Toolchain bin: $TOOLCHAIN_BIN"
         
-        # Find bare-metal arm-none-eabi or arm-eabi compiler
-        if [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
+        # Try NDK's clang first (better for older kernels)
+        if [ -f "$TOOLCHAIN_BIN/clang" ]; then
+          echo "Using NDK clang with bare-metal target"
+          export CC=clang
+          export CROSS_COMPILE=arm-none-eabi-
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+        elif [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
           export CROSS_COMPILE=arm-none-eabi-
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         elif [ -f "$TOOLCHAIN_BIN/arm-eabi-gcc" ]; then
@@ -119,14 +121,31 @@ jobs:
           exit 1
         fi
         
-        echo "Using toolchain: ${CROSS_COMPILE}gcc from $TOOLCHAIN_PATH"
-        export PATH="$TOOLCHAIN_PATH:$PATH"
+        if [ -n "$TOOLCHAIN_PATH" ]; then
+          export PATH="$TOOLCHAIN_PATH:$PATH"
+        fi
+        
+        # If using clang, verify it works for bare-metal
+        if [ "$CC" = "clang" ]; then
+          clang --version
+          echo "Using clang with target arm-none-eabi"
+          export CROSS_COMPILE=arm-none-eabi-
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+        else
+          export PATH="$TOOLCHAIN_PATH:$PATH"
+        fi
+        
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
         echo "CROSS_COMPILE=${CROSS_COMPILE}" >> $GITHUB_ENV
-        echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
+        if [ -n "$CC" ]; then
+          echo "CC=${CC}" >> $GITHUB_ENV
+        fi
+        if [ -n "$TOOLCHAIN_PATH" ]; then
+          echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
+        fi
 
     - name: Apply patch
       run: |

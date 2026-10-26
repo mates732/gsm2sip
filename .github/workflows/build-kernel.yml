@@ -32,7 +32,7 @@ jobs:
         set -euo pipefail
         cd kernel
         git log -1 --format="%H %s"
-        test "$(git rev-parse HEAD)" = "ce60f1d1" || { echo "ERROR: Unexpected kernel commit"; exit 1; }
+        test "$(git rev-parse --short=8 HEAD)" = "ce60f1d1" || { echo "ERROR: Unexpected kernel commit"; exit 1; }
 
     - name: Install Python 2.7 (kernel 3.4 requires Python 2)
       run: |

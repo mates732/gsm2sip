@@ -96,14 +96,10 @@ jobs:
           exit 1
         fi
         echo "Toolchain bin: $TOOLCHAIN_BIN"
+        ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
         
-        # Try NDK's clang first (better for older kernels)
-        if [ -f "$TOOLCHAIN_BIN/clang" ]; then
-          echo "Using NDK clang with bare-metal target"
-          export CC=clang
-          export CROSS_COMPILE=arm-none-eabi-
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-        elif [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
+        # Try arm-none-eabi-gcc first (bare-metal)
+        if [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
           export CROSS_COMPILE=arm-none-eabi-
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         elif [ -f "$TOOLCHAIN_BIN/arm-eabi-gcc" ]; then
@@ -117,35 +113,17 @@ jobs:
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         else
           echo "ERROR: No suitable ARM compiler found"
-          ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*gcc"
+          ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
           exit 1
         fi
         
-        if [ -n "$TOOLCHAIN_PATH" ]; then
-          export PATH="$TOOLCHAIN_PATH:$PATH"
-        fi
-        
-        # If using clang, verify it works for bare-metal
-        if [ "$CC" = "clang" ]; then
-          clang --version
-          echo "Using clang with target arm-none-eabi"
-          export CROSS_COMPILE=arm-none-eabi-
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-        else
-          export PATH="$TOOLCHAIN_PATH:$PATH"
-        fi
-        
+        export PATH="$TOOLCHAIN_PATH:$PATH"
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
         echo "CROSS_COMPILE=${CROSS_COMPILE}" >> $GITHUB_ENV
-        if [ -n "$CC" ]; then
-          echo "CC=${CC}" >> $GITHUB_ENV
-        fi
-        if [ -n "$TOOLCHAIN_PATH" ]; then
-          echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
-        fi
+        echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
 
     - name: Apply patch
       run: |

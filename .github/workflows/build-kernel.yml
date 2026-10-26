@@ -57,73 +57,24 @@ jobs:
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
-    - name: Setup Android NDK (r26d) with bare-metal toolchain
-      uses: android-actions/setup-android@v3
-      with:
-        ndk-version: r26d
-        api-level: 28
-
-    - name: Diagnose NDK toolchain and select compiler
+    - name: Install ARM toolchain (gcc-arm-linux-gnueabi, ~100MB)
       run: |
         set -euo pipefail
-        echo "=== Diagnosing NDK toolchain ==="
-        echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
-        echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
-        
-        TOOLCHAIN_BIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        if [ ! -d "$TOOLCHAIN_BIN" ]; then
-          echo "ERROR: Toolchain bin not found at $TOOLCHAIN_BIN"
-          find "$ANDROID_NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -20
-          exit 1
-        fi
-        
-        echo "Toolchain bin: $TOOLCHAIN_BIN"
-        ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
-        
-        # Priority order: clang (better for older kernels), then gcc variants
-        if [ -f "$TOOLCHAIN_BIN/clang" ]; then
-          echo "Using NDK clang with bare-metal target"
-          export CC=clang
-          export CROSS_COMPILE=arm-none-eabi-
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-          # Verify clang works for bare-metal
-          clang --version
-          clang --target=arm-none-eabi -c -x c /dev/null -o /dev/null 2>&1 && echo "clang bare-metal target OK" || echo "clang bare-metal target FAILED"
-        elif [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
-          export CROSS_COMPILE=arm-none-eabi-
-          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
-        elif [ -f "$TOOLCHAIN_BIN/arm-eabi-gcc" ]; then
-          export CROSS_COMPILE=arm-eabi-
-          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
-        elif [ -f "$TOOLCHAIN_BIN/arm-linux-gnueabi-gcc" ]; then
-          export CROSS_COMPILE=arm-linux-gnueabi-
-          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
-        elif [ -f "$TOOLCHAIN_BIN/arm-linux-androideabi-gcc" ]; then
-          export CROSS_COMPILE=arm-linux-androideabi-
-          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
-        else
-          echo "ERROR: No suitable ARM compiler found"
-          ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
-          exit 1
-        fi
-        
-        if [ -n "$TOOLCHAIN_PATH" ]; then
-          export PATH="$TOOLCHAIN_PATH:$PATH"
-        elif [ "$CC" = "clang" ]; then
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-        fi
-        
+        export DEBIAN_FRONTEND=noninteractive
+        echo "=== Installing gcc-arm-linux-gnueabi ==="
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends gcc-arm-linux-gnueabi
+        echo "=== Toolchain installed ==="
+
+    - name: Verify ARM toolchain
+      run: |
+        set -euo pipefail
+        export CROSS_COMPILE=arm-linux-gnueabi-
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
         echo "CROSS_COMPILE=${CROSS_COMPILE}" >> $GITHUB_ENV
-        if [ -n "$CC" ]; then
-          echo "CC=${CC}" >> $GITHUB_ENV
-        fi
-        if [ -n "$TOOLCHAIN_PATH" ]; then
-          echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
-        fi
 
     - name: Apply patch
       run: |

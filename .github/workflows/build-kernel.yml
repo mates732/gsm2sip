@@ -47,7 +47,7 @@ jobs:
         python --version
         python2.7 --version
 
-    - name: Install base dependencies
+    - name: Install base dependencies (no toolchain)
       run: |
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
@@ -57,21 +57,76 @@ jobs:
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
-    - name: Install ARM toolchain (gcc-arm-linux-gnueabi, ~100MB)
+    - name: Locate and verify pre-installed NDK bare-metal toolchain
       run: |
         set -euo pipefail
-        export DEBIAN_FRONTEND=noninteractive
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq --no-install-recommends gcc-arm-linux-gnueabi
-
-    - name: Verify ARM toolchain
-      run: |
-        set -euo pipefail
-        export CROSS_COMPILE=arm-linux-gnueabi-
+        # GitHub ubuntu-22.04 runners have NDK pre-installed
+        NDK_PATHS=(
+          "/usr/local/lib/android/sdk/ndk"
+          "/opt/android/ndk"
+          "$ANDROID_NDK_HOME"
+          "$ANDROID_NDK_ROOT"
+          "/usr/lib/android/sdk/ndk"
+        )
+        NDK_ROOT=""
+        for p in "${NDK_PATHS[@]}"; do
+          if [ -d "$p" ]; then
+            # Find the latest version directory
+            LATEST=$(ls -1 "$p" 2>/dev/null | sort -V | tail -1)
+            if [ -n "$LATEST" ] && [ -d "$p/$LATEST" ]; then
+              NDK_ROOT="$p/$LATEST"
+              break
+            fi
+          fi
+        done
+        if [ -z "$NDK_ROOT" ]; then
+          echo "ERROR: NDK not found in standard locations"
+          find /usr -name "*ndk*" -type d 2>/dev/null | head -10
+          exit 1
+        fi
+        echo "Found NDK at: $NDK_ROOT"
+        
+        # Look for bare-metal toolchain in NDK (clang or gcc)
+        # NDK r25c+ has bare-metal toolchain in toolchains/llvm/prebuilt/linux-x86_64/bin/
+        TOOLCHAIN_BIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        if [ ! -d "$TOOLCHAIN_BIN" ]; then
+          # Fallback: check for gcc toolchain
+          TOOLCHAIN_BIN=$(find "$NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -1 | xargs dirname)
+        fi
+        if [ ! -d "$TOOLCHAIN_BIN" ]; then
+          echo "ERROR: Toolchain bin not found in NDK"
+          find "$NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -10
+          exit 1
+        fi
+        echo "Toolchain bin: $TOOLCHAIN_BIN"
+        
+        # Find bare-metal arm-none-eabi or arm-eabi compiler
+        if [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
+          export CROSS_COMPILE=arm-none-eabi-
+          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
+        elif [ -f "$TOOLCHAIN_BIN/arm-eabi-gcc" ]; then
+          export CROSS_COMPILE=arm-eabi-
+          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
+        elif [ -f "$TOOLCHAIN_BIN/arm-linux-gnueabi-gcc" ]; then
+          export CROSS_COMPILE=arm-linux-gnueabi-
+          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
+        elif [ -f "$TOOLCHAIN_BIN/arm-linux-androideabi-gcc" ]; then
+          export CROSS_COMPILE=arm-linux-androideabi-
+          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
+        else
+          echo "ERROR: No suitable ARM compiler found"
+          ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*gcc"
+          exit 1
+        fi
+        
+        echo "Using toolchain: ${CROSS_COMPILE}gcc from $TOOLCHAIN_PATH"
+        export PATH="$TOOLCHAIN_PATH:$PATH"
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
+        echo "CROSS_COMPILE=${CROSS_COMPILE}" >> $GITHUB_ENV
+        echo "PATH=$TOOLCHAIN_PATH:\$PATH" >> $GITHUB_ENV
 
     - name: Apply patch
       run: |
@@ -83,13 +138,13 @@ jobs:
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
+        make ARCH=arm CROSS_COMPILE=${CROSS_COMPILE} samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
 
     - name: Build kernel
       run: |
         set -euo pipefail
         cd kernel
-        make ARCH=arm CROSS_COMPILE=arm-linux-gnueabi- -j$(nproc) 2>&1 | tee build.log
+        make ARCH=arm CROSS_COMPILE=${CROSS_COMPILE} -j$(nproc) 2>&1 | tee build.log
 
     - name: Verify artifacts
       run: |

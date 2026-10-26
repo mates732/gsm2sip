@@ -47,7 +47,7 @@ jobs:
         python --version
         python2.7 --version
 
-    - name: Install base dependencies (no toolchain)
+    - name: Install base dependencies
       run: |
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
@@ -57,57 +57,19 @@ jobs:
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
-    - name: Diagnose available ARM toolchains
+    - name: Install ARM toolchain (gcc-arm-linux-gnueabi, ~100MB)
       run: |
         set -euo pipefail
-        echo "=== Checking pre-installed toolchains ==="
-        which arm-none-eabi-gcc || echo "arm-none-eabi-gcc: NOT FOUND"
-        which arm-eabi-gcc || echo "arm-eabi-gcc: NOT FOUND"
-        which arm-linux-gnueabi-gcc || echo "arm-linux-gnueabi-gcc: NOT FOUND"
-        which arm-linux-androideabi-gcc || echo "arm-linux-androideabi-gcc: NOT FOUND"
-        which arm-none-eabi-clang || echo "arm-none-eabi-clang: NOT FOUND"
-        which clang || echo "clang: NOT FOUND"
-        
-        # Check NDK locations
-        echo "=== Checking NDK locations ==="
-        for p in /usr/local/lib/android/sdk/ndk /opt/android/ndk /usr/lib/android/sdk/ndk; do
-          if [ -d "$p" ]; then
-            echo "Found: $p"
-            ls -la "$p"
-            find "$p" -name "*arm*gcc*" -type f 2>/dev/null | head -10
-          fi
-        done
-        
-        # Check for NDK in standard env vars
-        echo "ANDROID_NDK_HOME: ${ANDROID_NDK_HOME:-NOT SET}"
-        echo "ANDROID_NDK_ROOT: ${ANDROID_NDK_ROOT:-NOT SET}"
-        
-        # List all arm-* compilers in PATH
-        echo "=== All arm-* compilers in PATH ==="
-        for cmd in arm-none-eabi-gcc arm-eabi-gcc arm-linux-gnueabi-gcc arm-linux-androideabi-gcc arm-none-eabi-clang clang; do
-          if command -v $cmd >/dev/null 2>&1; then
-            echo "FOUND: $cmd -> $(command -v $cmd)"
-            $cmd --version | head -1
-          fi
-        done
+        export DEBIAN_FRONTEND=noninteractive
+        echo "=== Installing gcc-arm-linux-gnueabi ==="
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends gcc-arm-linux-gnueabi
+        echo "=== Toolchain installed ==="
 
-    - name: Select and verify ARM toolchain
+    - name: Verify ARM toolchain
       run: |
         set -euo pipefail
-        # Priority order for kernel builds
-        if command -v arm-none-eabi-gcc >/dev/null 2>&1; then
-          export CROSS_COMPILE=arm-none-eabi-
-        elif command -v arm-eabi-gcc >/dev/null 2>&1; then
-          export CROSS_COMPILE=arm-eabi-
-        elif command -v arm-linux-gnueabi-gcc >/dev/null 2>&1; then
-          export CROSS_COMPILE=arm-linux-gnueabi-
-        elif command -v arm-linux-androideabi-gcc >/dev/null 2>&1; then
-          export CROSS_COMPILE=arm-linux-androideabi-
-        else
-          echo "ERROR: No ARM cross-compiler found in PATH"
-          exit 1
-        fi
-        
+        export CROSS_COMPILE=arm-linux-gnueabi-
         command -v ${CROSS_COMPILE}gcc
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld

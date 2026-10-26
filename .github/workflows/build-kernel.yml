@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 120
     defaults:
       run:
@@ -34,12 +34,24 @@ jobs:
         git log -1 --format="%H %s"
         test "$(git rev-parse HEAD)" = "ce60f1d1" || { echo "ERROR: Unexpected kernel commit"; exit 1; }
 
+    - name: Install Python 2.7 (kernel 3.4 requires Python 2)
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y python2.7 python2.7-dev
+        mkdir -p "$HOME/bin"
+        ln -sf /usr/bin/python2.7 "$HOME/bin/python"
+        echo "$HOME/bin" >> "$GITHUB_PATH"
+        command -v python
+        python --version
+        python2.7 --version
+
     - name: Install dependencies
       run: |
         set -euo pipefail
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends \
-          git python2 python2-dev python3 python3-dev python-is-python2 \
+          git python3 python3-dev \
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
@@ -49,7 +61,7 @@ jobs:
         wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/+archive/refs/heads/main.tar.gz -O /tmp/arm-eabi-4.8.tar.gz
         mkdir -p /opt/android/toolchains/arm-eabi-4.8
         tar -xzf /tmp/arm-eabi-4.8.tar.gz -C /opt/android/toolchains/arm-eabi-4.8
-        echo "/opt/android/toolchains/arm-eabi-4.8/bin" >> $GITHUB_PATH
+        echo "/opt/android/toolchains/arm-eabi-4.8/bin" >> "$GITHUB_PATH"
         arm-eabi-gcc --version
 
     - name: Apply patch

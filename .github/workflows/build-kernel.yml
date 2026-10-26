@@ -57,10 +57,10 @@ jobs:
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
-    - name: Setup Android NDK (r25c) with bare-metal toolchain
+    - name: Setup Android NDK (r26d) with bare-metal toolchain
       uses: android-actions/setup-android@v3
       with:
-        ndk-version: r25c
+        ndk-version: r26d
         api-level: 28
 
     - name: Verify NDK bare-metal toolchain (arm-none-eabi-gcc)
@@ -70,7 +70,7 @@ jobs:
         echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
         echo "ANDROID_NDK_HOME: $ANDROID_NDK_HOME"
         
-        # NDK r25c has arm-none-eabi-gcc in toolchains/llvm/prebuilt/linux-x86_64/bin/
+        # NDK r26d has arm-none-eabi-gcc in toolchains/llvm/prebuilt/linux-x86_64/bin/
         TOOLCHAIN_BIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
         if [ ! -d "$TOOLCHAIN_BIN" ]; then
           echo "ERROR: Toolchain bin not found"

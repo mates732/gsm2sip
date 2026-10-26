@@ -1,0 +1,23 @@
+diff --git a/net/ipv4/route.c b/net/ipv4/route.c
+index e7537229..1fd6ad0f 100644
+--- a/net/ipv4/route.c
++++ b/net/ipv4/route.c
+@@ -3042,8 +3042,16 @@ static int rt_fill_info(struct net *net, struct flowi4 *fl4,
+ 	if (rt->rt_dst != rt->rt_gateway)
+ 		NLA_PUT_BE32(skb, RTA_GATEWAY, rt->rt_gateway);
+ 
+-	if (rtnetlink_put_metrics(skb, dst_metrics_ptr(&rt->dst)) < 0)
+-		goto nla_put_failure;
++	{
++		u32 metrics[RTAX_MAX];
++		u32 *src_metrics = dst_metrics_ptr(&rt->dst);
++		if (src_metrics)
++			memcpy(metrics, src_metrics, sizeof(metrics));
++		else
++			memset(metrics, 0, sizeof(metrics));
++		if (rtnetlink_put_metrics(skb, metrics) < 0)
++			goto nla_put_failure;
++	}
+ 
+ 	if (rt->rt_mark)
+ 		NLA_PUT_BE32(skb, RTA_MARK, rt->rt_mark);

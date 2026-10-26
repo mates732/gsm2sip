@@ -1,0 +1,100 @@
+name: Build LineageOS 16.0 Kernel for serranoltexx
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.patch'
+      - '.github/workflows/build-kernel.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - name: Checkout kernel source
+      uses: actions/checkout@v4
+      with:
+        repository: LineageOS/android_kernel_samsung_msm8930-common
+        ref: lineage-16.0
+        path: kernel
+
+    - name: Checkout patch repository (this repo)
+      uses: actions/checkout@v4
+      with:
+        path: repo
+
+    - name: Verify kernel commit
+      run: |
+        set -euo pipefail
+        cd kernel
+        git log -1 --format="%H %s"
+        test "$(git rev-parse HEAD)" = "ce60f1d1" || { echo "ERROR: Unexpected kernel commit"; exit 1; }
+
+    - name: Install dependencies
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          git python2 python2-dev python3 python3-dev python-is-python2 \
+          gcc g++ make libssl-dev libelf-dev libncurses5-dev \
+          flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
+
+    - name: Download arm-eabi-4.8 toolchain
+      run: |
+        set -euo pipefail
+        wget -q https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8/+archive/refs/heads/main.tar.gz -O /tmp/arm-eabi-4.8.tar.gz
+        mkdir -p /opt/android/toolchains/arm-eabi-4.8
+        tar -xzf /tmp/arm-eabi-4.8.tar.gz -C /opt/android/toolchains/arm-eabi-4.8
+        echo "/opt/android/toolchains/arm-eabi-4.8/bin" >> $GITHUB_PATH
+        arm-eabi-gcc --version
+
+    - name: Apply patch
+      run: |
+        set -euo pipefail
+        cd kernel
+        git apply ../repo/rt_fill_info_null_fix.patch
+
+    - name: Configure kernel
+      run: |
+        set -euo pipefail
+        cd kernel
+        make ARCH=arm CROSS_COMPILE=arm-eabi- samsung_serrano_defconfig VARIANT_DEFCONFIG=msm8930_serrano_eur_lte_defconfig
+
+    - name: Build kernel
+      run: |
+        set -euo pipefail
+        cd kernel
+        make ARCH=arm CROSS_COMPILE=arm-eabi- -j$(nproc) 2>&1 | tee build.log
+
+    - name: Verify artifacts
+      run: |
+        set -euo pipefail
+        cd kernel
+        test -f arch/arm/boot/zImage && test -s arch/arm/boot/zImage
+        test -f arch/arm/boot/zImage-dtb && test -s arch/arm/boot/zImage-dtb
+        ls -la arch/arm/boot/zImage*
+        file arch/arm/boot/zImage
+        echo "=== ARTIFACTS ARE zImage/zImage-dtb ONLY ==="
+        echo "=== NOT A FLASHABLE boot.img ==="
+
+    - name: Upload build log
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-log
+        path: kernel/build.log
+        retention-days: 30
+
+    - name: Upload kernel artifacts
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel-artifacts
+        path: |
+          kernel/arch/arm/boot/zImage
+          kernel/arch/arm/boot/zImage-dtb
+        retention-days: 30

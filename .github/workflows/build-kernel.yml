@@ -37,6 +37,7 @@ jobs:
     - name: Install Python 2.7 (kernel 3.4 requires Python 2)
       run: |
         set -euo pipefail
+        echo "=== Installing Python 2.7 ==="
         sudo apt-get update
         sudo apt-get install -y python2.7 python2.7-dev
         mkdir -p "$HOME/bin"
@@ -45,20 +46,26 @@ jobs:
         command -v python
         python --version
         python2.7 --version
+        echo "=== Python 2.7 installed ==="
 
-    - name: Install dependencies and bare-metal ARM toolchain (gcc-arm-linux-gnueabi)
+    - name: Install dependencies
       run: |
         set -euo pipefail
-        set -x
-        echo "=== Starting apt-get update ==="
+        echo "=== Installing base dependencies ==="
         sudo apt-get update
-        echo "=== Installing packages ==="
         sudo apt-get install -y --no-install-recommends \
           git python3 python3-dev \
           gcc g++ make libssl-dev libelf-dev libncurses5-dev \
-          flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates \
-          gcc-arm-linux-gnueabi
-        echo "=== Package installation complete ==="
+          flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
+        echo "=== Base dependencies installed ==="
+
+    - name: Install ARM toolchain (gcc-arm-linux-gnueabi)
+      run: |
+        set -euo pipefail
+        echo "=== Installing gcc-arm-linux-gnueabi ==="
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends gcc-arm-linux-gnueabi
+        echo "=== gcc-arm-linux-gnueabi installed ==="
 
     - name: Verify Linux-targeted ARM toolchain
       run: |
@@ -68,6 +75,7 @@ jobs:
         ${CROSS_COMPILE}gcc --version
         command -v ${CROSS_COMPILE}ld
         command -v ${CROSS_COMPILE}objcopy
+        echo "=== Toolchain verified ==="
 
     - name: Apply patch
       run: |

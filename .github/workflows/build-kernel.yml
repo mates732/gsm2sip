@@ -57,26 +57,76 @@ jobs:
           make libssl-dev libelf-dev libncurses5-dev \
           flex bison bc cpio kmod liblz4-tool xz-utils wget ca-certificates
 
-    - name: Setup Android NDK r25c (GCC 4.9 compatible with kernel 3.4)
+    - name: Setup Android NDK r25c
       uses: android-actions/setup-android@v3
       with:
         ndk-version: r25c
         api-level: 28
 
-    - name: Configure NDK bare-metal toolchain (arm-none-eabi-gcc)
+    - name: Diagnose NDK installation
       run: |
         set -euo pipefail
-        echo "=== Configuring NDK bare-metal toolchain ==="
-        echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
+        echo "=== NDK Environment ==="
+        echo "ANDROID_NDK_ROOT: ${ANDROID_NDK_ROOT:-NOT SET}"
+        echo "ANDROID_NDK_HOME: ${ANDROID_NDK_HOME:-NOT SET}"
         
-        TOOLCHAIN_BIN="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
-        if [ ! -d "$TOOLCHAIN_BIN" ]; then
-          echo "ERROR: Toolchain bin not found"
-          find "$ANDROID_NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -10
+        # Find NDK root
+        NDK_ROOT=""
+        for p in "$ANDROID_NDK_ROOT" "$ANDROID_NDK_HOME" "/usr/local/lib/android/sdk/ndk" "/opt/android/ndk"; do
+          if [ -d "$p" ]; then
+            LATEST=$(ls -1 "$p" 2>/dev/null | sort -V | tail -1)
+            if [ -n "$LATEST" ] && [ -d "$p/$LATEST" ]; then
+              NDK_ROOT="$p/$LATEST"
+              break
+            fi
+          fi
+        done
+        
+        if [ -z "$NDK_ROOT" ]; then
+          echo "ERROR: NDK not found"
+          find /usr -name "*ndk*" -type d 2>/dev/null | head -10
           exit 1
         fi
         
-        # Priority: arm-none-eabi-gcc (bare-metal) > arm-eabi-gcc > arm-linux-gnueabi-gcc
+        echo "Found NDK at: $NDK_ROOT"
+        
+        # Check toolchain
+        TOOLCHAIN_BIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        if [ ! -d "$TOOLCHAIN_BIN" ]; then
+          echo "ERROR: Toolchain bin not found"
+          find "$NDK_ROOT" -name "*arm*gcc*" -type f 2>/dev/null | head -10
+          exit 1
+        fi
+        
+        echo "Toolchain bin: $TOOLCHAIN_BIN"
+        ls -la "$TOOLCHAIN_BIN" | grep -E "arm.*(gcc|clang)"
+        
+        # Check available compilers
+        for compiler in arm-none-eabi-gcc arm-eabi-gcc arm-linux-gnueabi-gcc arm-linux-androideabi-gcc clang; do
+          if [ -f "$TOOLCHAIN_BIN/$compiler" ]; then
+            echo "FOUND: $compiler"
+            "$TOOLCHAIN_BIN/$compiler" --version | head -1
+          fi
+        done
+
+    - name: Select and configure toolchain
+      run: |
+        set -euo pipefail
+        # Find NDK root
+        NDK_ROOT=""
+        for p in "$ANDROID_NDK_ROOT" "$ANDROID_NDK_HOME" "/usr/local/lib/android/sdk/ndk" "/opt/android/ndk"; do
+          if [ -d "$p" ]; then
+            LATEST=$(ls -1 "$p" 2>/dev/null | sort -V | tail -1)
+            if [ -n "$LATEST" ] && [ -d "$p/$LATEST" ]; then
+              NDK_ROOT="$p/$LATEST"
+              break
+            fi
+          fi
+        done
+        
+        TOOLCHAIN_BIN="$NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        
+        # Priority order for kernel builds
         if [ -f "$TOOLCHAIN_BIN/arm-none-eabi-gcc" ]; then
           export CROSS_COMPILE=arm-none-eabi-
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
@@ -85,6 +135,9 @@ jobs:
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         elif [ -f "$TOOLCHAIN_BIN/arm-linux-gnueabi-gcc" ]; then
           export CROSS_COMPILE=arm-linux-gnueabi-
+          TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
+        elif [ -f "$TOOLCHAIN_BIN/arm-linux-androideabi-gcc" ]; then
+          export CROSS_COMPILE=arm-linux-androideabi-
           TOOLCHAIN_PATH="$TOOLCHAIN_BIN"
         else
           echo "ERROR: No suitable ARM compiler found"
